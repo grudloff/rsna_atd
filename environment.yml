@@ -1,0 +1,19 @@
+name : ds_gpu
+channels:
+  - conda-forge
+  - nvidia
+dependencies:
+  - pytorch::pytorch 
+  - pytorch::torchvision
+  - pytorch::torchaudio
+  - pytorch::pytorch-cuda=11.8
+  - pytorch-lightning
+  - monai
+  - matplotlib
+  - seaborn
+  - numpy
+  - scipy
+  - scikit-learn
+  - jupyter
+  - ipykernel
+  - pandas
