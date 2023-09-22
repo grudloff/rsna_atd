@@ -2,4 +2,6 @@ png_data
 submission.csv
 analysis
 __pycache__
-*.ckpt
+*.pth
+rsna-2023-abdominal-trauma-detection
+CustomLogger

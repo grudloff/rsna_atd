@@ -21,11 +21,13 @@ loss_weights = {
     "spleen" : {"spleen_healthy" : 1, "spleen_low" : 2, "spleen_high" : 4},
     "any_injury" : {"any_injury" : 6}
 }
+
+# Options for all models
+
+HEAD_HIDDEN_SIZE = 32
+
 #2D model options
 BACKBONE = "efficientnet_v2_s"
-
-ct_2dmodel_head_first_layer = 32
-ct_2dmodel_head_second_layer = 32
 
 #2D model parameters
 resnet_backbones = {
@@ -48,8 +50,6 @@ backbone_dict = {**resnet_backbones, **efficientnet_backbones}
 tasks=["bowel", "extra", "liver", "kidney", "spleen", "any_injury"]
 
 #3D model options
-
-RNN_HIDDEN_SIZE = 32
-HEAD_HIDDEN_SIZE = 32
+RNN_HIDDEN_SIZE = 32s
 
 DEBUGGIN = False

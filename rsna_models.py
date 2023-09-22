@@ -4,6 +4,7 @@ import torch.optim as optim
 from torchvision.transforms import Resize
 import pytorch_lightning as pl
 import rsna_config as config
+import monai
 
 def split_targets(targets: torch.tensor) -> tuple[torch.tensor]:
     """ Split target into the different tasks. """
@@ -131,20 +132,20 @@ class CT_2DModel(CT_BaseModel):
 
         self.heads = nn.ModuleList([
             # Bowel
-            nn.Sequential(nn.Linear(output_size, config.ct_2dmodel_head_first_layer), nn.SiLU(),
-                          nn.Linear(config.ct_2dmodel_head_second_layer, 2), nn.Softmax(dim=-1)),
+            nn.Sequential(nn.Linear(output_size, config.HEAD_HIDDEN_SIZE), nn.SiLU(),
+                          nn.Linear(config.HEAD_HIDDEN_SIZE, 2), nn.Softmax(dim=-1)),
             # Extra
-            nn.Sequential(nn.Linear(output_size, config.ct_2dmodel_head_first_layer), nn.SiLU(),
-                          nn.Linear(config.ct_2dmodel_head_second_layer, 2), nn.Softmax(dim=-1)),
+            nn.Sequential(nn.Linear(output_size, config.HEAD_HIDDEN_SIZE), nn.SiLU(),
+                          nn.Linear(config.HEAD_HIDDEN_SIZE, 2), nn.Softmax(dim=-1)),
             # Liver
-            nn.Sequential(nn.Linear(output_size, config.ct_2dmodel_head_first_layer), nn.SiLU(),
-                          nn.Linear(config.ct_2dmodel_head_second_layer, 3), nn.Softmax(dim=-1)),
+            nn.Sequential(nn.Linear(output_size, config.HEAD_HIDDEN_SIZE), nn.SiLU(),
+                          nn.Linear(config.HEAD_HIDDEN_SIZE, 3), nn.Softmax(dim=-1)),
             # Kidney
-            nn.Sequential(nn.Linear(output_size, config.ct_2dmodel_head_first_layer), nn.SiLU(),
-                          nn.Linear(config.ct_2dmodel_head_second_layer, 3), nn.Softmax(dim=-1)),
+            nn.Sequential(nn.Linear(output_size, config.HEAD_HIDDEN_SIZE), nn.SiLU(),
+                          nn.Linear(config.HEAD_HIDDEN_SIZE, 3), nn.Softmax(dim=-1)),
             # Spleen
-            nn.Sequential(nn.Linear(output_size, config.ct_2dmodel_head_first_layer), nn.SiLU(),
-                          nn.Linear(config.ct_2dmodel_head_second_layer, 3), nn.Softmax(dim=-1))
+            nn.Sequential(nn.Linear(output_size, config.HEAD_HIDDEN_SIZE), nn.SiLU(),
+                          nn.Linear(config.HEAD_HIDDEN_SIZE, 3), nn.Softmax(dim=-1))
         ])
 
     def forward(self, x):
@@ -160,3 +161,87 @@ class CT_2DModel(CT_BaseModel):
         outputs = outputs + [any_injury]
 
         return outputs
+
+class CT_3DModel(CT_BaseModel):
+    """ 3D model for CT scans. As input, the model expects a batch of volumes of size (B, C, H, W, D). Where C
+    corresponds to the number of sessions. The logic is that the backbone extracts a representation for each session,
+    and then the aggregator combines the representations into a single representation. This representation is then
+    used by the heads to predict the probabilities for each class.
+
+    The model is composed of a backbone and 5 heads, one for each task.
+    The backbone is a DenseNet model. The heads are composed of a linear layer,
+    a SiLU activation function, a linear layer with 2, 2, 3, 3, 3 neurons respectively and
+    a softmax activation function. The output of the model is a list of 6 tensors, one for each head. The last
+    head, which corresponds to no injury, is computed from the injury probabilities of the other heads.
+    The loss function is a weighted cross entropy loss.
+
+    NOTE: The model is constructed to only accept batchsizes of 1. This is because input sizes may vary and passing multiple
+    volumes of different sizes to the model would be problematic.
+
+    """
+    def __init__(self, lr=1e-4, loss_weights=None):
+        super().__init__(loss_weights=loss_weights, lr=lr)
+
+        out_channels = 2 # This doesn't matter as the class_layers will be overriden
+        self.backbone = monai.networks.nets.DenseNet121(spatial_dims=3, in_channels=1, out_channels=out_channels)
+        self.backbone._modules["class_layers"] = nn.Sequential(nn.ReLU(), nn.AdaptiveAvgPool3d(1), nn.Flatten())
+
+        rnn_input_size = 1024 + 1 # number of output channels of backbone + aortic_hu
+
+        hidden_size = config.RNN_HIDDEN_SIZE
+        self.aggregator = nn.RNN(input_size=rnn_input_size, 
+                                 hidden_size=hidden_size, 
+                                 num_layers=2,
+                                 nonlinearity = "relu",
+                                 bidirectional=True, 
+                                 batch_first=False)    
+        
+        head_input_size = hidden_size*2     
+
+        self.heads = nn.ModuleList([
+            nn.Sequential(nn.Linear(head_input_size, config.HEAD_HIDDEN_SIZE), nn.SiLU(),
+                          nn.Linear(config.HEAD_HIDDEN_SIZE, 2), nn.Softmax(dim=-1)),  # Bowel
+            nn.Sequential(nn.Linear(head_input_size, config.HEAD_HIDDEN_SIZE), nn.SiLU(),
+                          nn.Linear(config.HEAD_HIDDEN_SIZE, 2), nn.Softmax(dim=-1)),  # Extra
+            nn.Sequential(nn.Linear(head_input_size, config.HEAD_HIDDEN_SIZE), nn.SiLU(),
+                          nn.Linear(config.HEAD_HIDDEN_SIZE, 3), nn.Softmax(dim=-1)),  # Liver
+            nn.Sequential(nn.Linear(head_input_size, config.HEAD_HIDDEN_SIZE), nn.SiLU(),
+                          nn.Linear(config.HEAD_HIDDEN_SIZE, 3), nn.Softmax(dim=-1)),  # Kidney
+            nn.Sequential(nn.Linear(head_input_size, config.HEAD_HIDDEN_SIZE), nn.SiLU(),
+                          nn.Linear(config.HEAD_HIDDEN_SIZE, 3), nn.Softmax(dim=-1))  # Spleen
+        ])
+
+    def forward(self, x, aortic_hu):
+        # x.shape: B, C, H, W, D
+        x = torch.swapaxes(x, 0, 1)
+        x = self.backbone(x)
+        # aortic_hu.shape: B, C
+        aortic_hu = torch.swapaxes(aortic_hu, 0, 1)
+        x = torch.concat((x, aortic_hu), dim=-1)
+        rnn_outputs, _ = self.aggregator(x)
+        x = rnn_outputs[None, -1]
+        
+        outputs = [head(x) for head in self.heads]
+        # P[no_injury] = P[no_injury_bowel] * P[no_injury_extra] * P[no_injury_liver] * P[no_injury_kidney] * P[no_injury_spleen]
+        no_injury = torch.prod(torch.stack([output[:, 0] for output in outputs], dim=-1),
+                               dim=-1, keepdim=True)
+        any_injury = 1-no_injury
+        outputs += [any_injury]
+        return outputs
+    
+    def _inference_fn(self, batch):
+        images, aortic_hu, targets = batch
+        outputs = self(images, aortic_hu)
+        targets = split_targets(targets)
+        return outputs, targets
+    
+    def predict_step(self, batch, batch_idx):
+        x, aortic_hu = batch
+        return self.forward(x, aortic_hu)
+
+    def configure_optimizers(self):
+        # NOTE: We use SGD as Adam has issues with float16
+        optimizer = optim.SGD(self.parameters(), lr=self.lr)
+        scheduler = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=self.lr,
+                                                  total_steps=self.trainer.estimated_stepping_batches)
+        return [optimizer], [scheduler]
