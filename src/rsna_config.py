@@ -50,6 +50,6 @@ backbone_dict = {**resnet_backbones, **efficientnet_backbones}
 tasks=["bowel", "extra", "liver", "kidney", "spleen", "any_injury"]
 
 #3D model options
-RNN_HIDDEN_SIZE = 32s
+RNN_HIDDEN_SIZE = 32
 
 DEBUGGIN = False
