@@ -8,7 +8,7 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 from monai.transforms import Pad
 from monai.transforms.transform import Transform
-import rsna_config as config
+import rsna_atd.config as config
 
 def decode_image_and_label(image_path, image_size=None):
     if image_size is None:

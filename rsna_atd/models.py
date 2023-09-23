@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torchvision.transforms import Resize
 import pytorch_lightning as pl
-import rsna_config as config
+import rsna_atd.config as config
 import monai
 
 def split_targets(targets: torch.tensor) -> tuple[torch.tensor]:

@@ -2,6 +2,28 @@ The RSNA Abdominal Trauma Detection AI Challenge involves developing AI models t
 
 [RSNA 2023 Abdominal Trauma Detection](https://www.kaggle.com/competitions/rsna-2023-abdominal-trauma-detection)
 
+# Installation
+
+ 1. Conda environment
+
+ ```bash
+ conda env create --file environment.yml
+ ```
+
+ 2. Activate environment
+
+  ```bash
+ conda activate rsna_atd
+ ```
+
+ 3. Install package through pip
+
+  ```bash
+pip install .
+ ```
+
+ NOTE: If you want to modify some of the codebase, you should pip install with the `-e` flag.
+
 # Objective
 
 Each patient can have one or multiple abdominal CT scans. The prediction is made per patient, indicating the corresponding trauma (or lack of).
@@ -67,11 +89,11 @@ train.csv               train_series_meta.csv
 # Code structure
 
 ```markdown
-src
-├── rsna_config.py              # Configuration parameters
-├── rsna_data.py                # Data processing tools
-├── rsna_models.py              # Model definitions
-├── rsna_utils.py               # Miscelaneous utilities
-└── rsna_visulization.py        # Visualization
+rsna_atd
+├── config.py               # Configuration parameters
+├── data.py                 # Data processing tools
+├── models.py               # Model definitions
+├── utils.py                # Miscelaneous utilities
+└── visulization.py         # Visualization
 
 ```

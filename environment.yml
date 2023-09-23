@@ -1,4 +1,4 @@
-name : ds_gpu
+name : rsna_atd
 channels:
   - conda-forge
   - nvidia

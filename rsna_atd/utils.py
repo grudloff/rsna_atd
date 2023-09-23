@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
 import os
-import rsna_config as config
+import rsna_atd.config as config
 from pytorch_lightning.utilities import rank_zero_only
 from pytorch_lightning.loggers import Logger
 

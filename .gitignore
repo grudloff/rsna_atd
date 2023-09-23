@@ -5,3 +5,5 @@ __pycache__
 *.pth
 rsna-2023-abdominal-trauma-detection
 CustomLogger
+rsna_atd.egg-info
+download_dataset.ipynb
