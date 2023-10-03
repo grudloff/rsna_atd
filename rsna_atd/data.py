@@ -247,3 +247,17 @@ def normalize_grouped_dataframes(grouped_dfs):
         result_df = pd.concat([result_df, normalized_rows], axis=1)
 
     return result_df
+
+class ResilientLoadImage(LoadImage):
+    """ Custom LoadImage class to handle errors when loading images with SimpleITK. This reader is slower
+    than the default reader, but it handles errors better.
+
+    NOTE: This is specially helpful for inference on the hidden dataset.
+    """
+    def __call__(self, filename, reader=None):
+        try:
+            output = super().__call__(filename, reader)
+        except:
+            itk_loadimage = LoadImage(reader="ITKReader", image_only=True, ensure_channel_first=False, dtype=torch.float16)
+            output = itk_loadimage(filename)
+        return output
