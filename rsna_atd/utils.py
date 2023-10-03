@@ -15,6 +15,8 @@ def split_group(group, test_size=0.2):
        by sampling the element to be in the train or test set with a probability of test_size and 1-test_size
        respectively.
     """
+    if test_size == 0:
+        return (group, pd.DataFrame())
     if len(group) == 1:
         return (group, pd.DataFrame()) if np.random.rand() < test_size else (pd.DataFrame(), group)
     else:
