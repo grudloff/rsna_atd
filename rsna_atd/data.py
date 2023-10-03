@@ -9,6 +9,7 @@ from torchvision import transforms
 from monai.transforms import Pad
 from monai.transforms.transform import Transform
 import rsna_atd.config as config
+from monai.transforms import LoadImage
 
 def decode_image_and_label(image_path, image_size=None):
     if image_size is None:
@@ -112,7 +113,8 @@ def max_shape_pad(tensor_list):
         if (current_shape == target_shape).all():
             padded_tensors.append(tensor)
         else:
-            pad_dims = [(0, 0) for _ in range(len(target_shape))]  # Initialize symmetric padding dimensions
+            # Initialize symmetric padding dimensions
+            pad_dims = [(0, 0) for _ in range(len(target_shape))] 
             for dim in range(len(target_shape)):
                 if current_shape[dim] < target_shape[dim]:
                     pad_total = target_shape[dim] - current_shape[dim]
@@ -121,15 +123,13 @@ def max_shape_pad(tensor_list):
                     pad_dims[dim] = (pad_before, pad_after)
             padded_tensor = Pad(to_pad=pad_dims)(tensor)
             padded_tensors.append(padded_tensor)
-            
-    shapes = np.array([np.array(tensor.shape) for tensor in padded_tensors])
-    cat_tensors = torch.cat(padded_tensors, 0)
-    return cat_tensors
+    return padded_tensors
 
 class LoadingDataset(Dataset):
-    def __init__(self, data_paths, ah_normalizer, augment=None, train=False):
+    def __init__(self, data_paths, ah_normalizer, transform=None, augment=None, train=False):
         self.data_paths = data_paths
         self.ah_normalizer = ah_normalizer
+        self.transform = transform
         self.augment = augment
         self.train = train
 
@@ -139,16 +139,19 @@ class LoadingDataset(Dataset):
     def __getitem__(self, index):
         data_path = self.data_paths[index]
         data = torch.load(data_path)
-        images = data["images"]
+        volume = data["images"]
+        if self.transform is not None:
+            volume = self.transform(volume)
         if self.train and self.augment is not None:
-            images = self.augment(images)
+            volume = self.augment(volume)
         aortic_hu = data["aortic_hu"]
         aortic_hu = np.array(aortic_hu, dtype=np.float16)
         aortic_hu = aortic_hu.reshape(-1, 1)
         aortic_hu = self.ah_normalizer.transform(aortic_hu)
-        aortic_hu = aortic_hu.reshape(-1)
+        # aortic_hu = aortic_hu.reshape(1, -1)
+        aortic_hu = torch.tensor(aortic_hu)
         label = np.array(data["label"], dtype=np.float16)
-        return images, aortic_hu, label
+        return volume, aortic_hu, label
 
 class InferenceDataset(Dataset):
     def __init__(self, image_files, aortic_hues ,transform, ah_normalizer):
@@ -168,11 +171,14 @@ class InferenceDataset(Dataset):
         aortic_hu = aortic_hu.reshape(-1, 1)
         if len(img_list) > 1:
             aortic_hu = self.ah_normalizer.transform(aortic_hu)
-            aortic_hu = aortic_hu.reshape(-1)
-            return max_shape_pad(img_list), aortic_hu
+            aortic_hu = torch.tensor(aortic_hu)
+            padded_img_list = max_shape_pad(img_list)
+            img = torch.cat(padded_img_list, 0)
+            return img, aortic_hu
         else:
             aortic_hu = self.ah_normalizer.transform(aortic_hu)
-            return img_list[0], aortic_hu[0]
+            aortic_hu = torch.tensor(aortic_hu)
+            return img_list[0], aortic_hu
 
 class Ensure4D(Transform):
     """Ensure the image is 4D by adding a channel dimension and padding according to
@@ -180,6 +186,11 @@ class Ensure4D(Transform):
 
     Args:
         kernel_size (int): kernel size of the 3D CNN.
+
+    Returns:
+        torch.Tensor: 4D tensor.
+
+    NOTE: This is helpful for the inference on the non-hidden dataset, as it contains 2D images.
     """
 
     def __init__(self, kernel_size=40):
