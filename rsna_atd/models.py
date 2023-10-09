@@ -5,6 +5,7 @@ from torchvision.transforms import Resize
 import pytorch_lightning as pl
 import rsna_atd.config as config
 import monai
+from torch.nn.functional import adaptive_max_pool2d
 
 def split_targets(targets: torch.tensor) -> tuple[torch.tensor]:
     """ Split target into the different tasks. """
@@ -162,6 +163,147 @@ class CT_2DModel(CT_BaseModel):
 
         return outputs
     
+
+class CT_25DModel(CT_BaseModel):
+    """ The 2.5D model for CT scans. The idea of the model is that the backbone extracts a representation for each slice,
+    from front and side views. Separate aggregators combine the information from each view into a single representation.
+    These representations are then stacked and used by the heads to predict the probabilities for each class.
+
+    The model is composed of a backbone, three view-level aggregators, one series_level aggregator and 5 heads, one for each task.
+    The backbone is a pretrained ResNet or EfficientNet model. The view-level aggregators are composed of a LSTSM with 2 layers,
+    with 128 hidden units and a SiLU activation function. The series-level aggregator is composed of a RNN with 2 layers,
+    with 32 hidden units and a SiLU activastion function. The heads are composed of a linear layer,
+    a SiLU activation function, a linear layer with 2, 2, 3, 3, 3 neurons respectively and
+    a softmax activation function. The output of the model is a list of 6 tensors, one for each head. The last
+    head, which corresponds to no injury, is computed from the injury probabilities of the other heads.
+    The loss function is a weighted cross entropy loss.
+    """
+
+    def __init__(self, backbone=None, loss_weights=None, lr=1e-4):
+        super().__init__(loss_weights=loss_weights, lr=lr)
+
+        if backbone is None:
+            backbone = config.BACKBONE
+        try:
+            self.backbone = config.backbone_dict[backbone]["model"](weights=config.backbone_dict[backbone]["weights"])
+            if backbone in config.resnet_backbones:
+                self.backbone.fc = nn.Identity()
+            elif backbone in config.efficientnet_backbones:
+                self.backbone.classifier = nn.Identity()
+        except KeyError:
+            raise KeyError(f"Backbone {backbone} not found. Please choose one of: {list(config.backbone_dict.keys())}")
+
+        with torch.no_grad():
+            output_size = self.backbone(torch.zeros(1, 3, *config.IMAGE_SIZE)).shape[1]
+
+        # self.view_aggregators= nn.ModuleList([
+        #     nn.LSTM(input_size=output_size, hidden_size=config.LSTM_HIDDEN_SIZE, num_layers=2, batch_first=False),
+        #     nn.LSTM(input_size=output_size, hidden_size=config.LSTM_HIDDEN_SIZE, num_layers=2, batch_first=False),
+        #     nn.LSTM(input_size=output_size, hidden_size=config.LSTM_HIDDEN_SIZE, num_layers=2, batch_first=False)
+        # ])
+
+        # self.series_aggregator = nn.RNN(input_size=config.LSTM_HIDDEN_SIZE*2, hidden_size=config.RNN_HIDDEN_SIZE,
+        #                                 num_layers=2, batch_first=False)
+
+        self.series_aggregator = nn.RNN(input_size=output_size, hidden_size=config.RNN_HIDDEN_SIZE,
+                                        num_layers=2, batch_first=False)
+
+        self.heads = nn.ModuleList([
+            # Bowel
+            nn.Sequential(nn.Linear(output_size, config.HEAD_HIDDEN_SIZE), nn.SiLU(),
+                          nn.Linear(config.HEAD_HIDDEN_SIZE, 2), nn.Softmax(dim=-1)),
+            # Extra
+            nn.Sequential(nn.Linear(output_size, config.HEAD_HIDDEN_SIZE), nn.SiLU(),
+                          nn.Linear(config.HEAD_HIDDEN_SIZE, 2), nn.Softmax(dim=-1)),
+            # Liver
+            nn.Sequential(nn.Linear(output_size, config.HEAD_HIDDEN_SIZE), nn.SiLU(),
+                          nn.Linear(config.HEAD_HIDDEN_SIZE, 3), nn.Softmax(dim=-1)),
+            # Kidney
+            nn.Sequential(nn.Linear(output_size, config.HEAD_HIDDEN_SIZE), nn.SiLU(),
+                          nn.Linear(config.HEAD_HIDDEN_SIZE, 3), nn.Softmax(dim=-1)),
+            # Spleen
+            nn.Sequential(nn.Linear(output_size, config.HEAD_HIDDEN_SIZE), nn.SiLU(),
+                          nn.Linear(config.HEAD_HIDDEN_SIZE, 3), nn.Softmax(dim=-1))
+        ])
+
+    def forward(self, x, aortic_hu):
+        """ Forward pass of the model.
+
+        Args:
+            x: list of tensors of shape (C, H, W, D) with length B
+            aortic_hu: list of tensors of shape (b, C) with length B
+        
+        Returns:
+            outputs: list of tensors of shape (B, 2), (B, 2), (B, 3), (B, 3), (B, 3), (B, 1)
+
+        Note: b = 1 (placeholder unitary batch size)
+        """
+        n_series = [len(volume) for volume in x]
+        global_representation = []
+        for volumes, ao_hues in zip(x, aortic_hu):
+            series_rep = []
+            for volume, ao_hu in zip(volumes, ao_hues):
+                # repeat channel dim 3 times to match the backbone input size
+                volume = volume.unsqueeze(0) # add batch dim
+                volume = volume.repeat(3, 1, 1, 1)
+                # volume.shape: (b, H, W, D)
+                bottom_view = volume.permute(3, 0, 1, 2)
+                # bottom_view.shape: (H, b, W, D)
+                bottom_features = self.backbone(bottom_view)
+                # aggregate with adaptive max pooling
+                bottom_rep = torch.max(bottom_features, dim=0)[0]
+                # TODO: remove this line
+                # bottom_rep = self.view_aggregators[0](bottom_features)[0][-1, :]
+                front_view = volume.permute(1, 0, 2, 3)
+                # front_view.shape: (D, b, H, W)
+                front_features= self.backbone(front_view)
+                # aggregate with adaptive max pooling
+                front_rep = torch.max(front_features, dim=0)[0]
+                # TODO: remove this line
+                # front_rep = self.view_aggregators[1](front_features)[0][-1, :]
+                side_view = volume.permute(2, 0, 1, 3)
+                # side_view.shape: (H, b, W, D)
+                side_features = self.backbone(side_view)
+                # aggregate with adaptive max pooling
+                side_rep = torch.max(side_features, dim=0)[0]
+                # TODO: remove this line
+                # side_rep = self.view_aggregators[2](side_features)[0][-1, :]
+                # TODO: remove this line
+                # single_series_rep = torch.cat([bottom_rep, front_rep, side_rep, aortic_hu])
+                single_series_rep = bottom_rep + front_rep + side_rep
+                single_series_rep = torch.cat([single_series_rep, ao_hu])
+                series_rep.append(single_series_rep)
+            series_rep = torch.stack(series_rep)
+            global_rep = self.series_aggregator(series_rep)[0][-1, :]
+            global_representation.append(global_rep)
+        global_representation = torch.stack(global_representation)
+        outputs = [head(global_representation) for head in self.heads]
+        # P[no_injury] = Prod(P[no_injury_{task}] for task in tasks)
+        no_injury = torch.prod(torch.stack([output[:, 0] for output in outputs], dim=-1),
+                               dim=-1, keepdim=True)
+        any_injury = 1-no_injury
+        outputs += [any_injury]
+        return outputs
+
+    def _inference_fn(self, batch):
+        images, aortic_hu, targets = batch
+        outputs = self(images, aortic_hu)
+        targets = split_targets(targets)
+        return outputs, targets
+    
+    def predict_step(self, batch, batch_idx):
+        x, aortic_hu = batch
+        x = self.forward(x, aortic_hu)
+        x = torch.concat(x, 1)
+        return x
+
+    def configure_optimizers(self):
+        # NOTE: We use SGD as Adam has issues with float16
+        optimizer = optim.SGD(self.parameters(), lr=self.lr)
+        scheduler = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=self.lr,
+                                                  total_steps=self.trainer.estimated_stepping_batches)
+        return [optimizer], [scheduler]
+        
 # block args
 blocks_args_str = [
     "r1_k3_s22_e1_i32_o16_se0.25", # This one is modified from s11 to s22, meaning stride 2

@@ -49,6 +49,10 @@ backbone_dict = {**resnet_backbones, **efficientnet_backbones}
 
 tasks=["bowel", "extra", "liver", "kidney", "spleen", "any_injury"]
 
+# 2.5D model options
+
+LSTM_HIDDEN_SIZE = 32
+
 #3D model options
 RNN_HIDDEN_SIZE = 32
 
