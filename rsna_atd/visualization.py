@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import warnings
 
 def plot_image_gallery(images, value_range=(0, 1), rows=2, cols=2):
     """ Plot a gallery of images. """
@@ -24,7 +25,10 @@ def plot_per_task_accuracy(logger):
         # Plot training accuracy
         axes[i].plot(logger.logged_metrics['train_' +name + '_accuracy'], label='Training ' + name)
         # Plot validation accuracy
-        axes[i].plot(logger.logged_metrics['val_' + name + '_accuracy'], label='Validation ' + name)
+        try:
+            axes[i].plot(logger.logged_metrics['val_' + name + '_accuracy'], label='Validation ' + name)
+        except KeyError:
+            warnings.warn(f'No validation {name} accuracy found.')
         axes[i].set_title(name)
         axes[i].set_xlabel('Epoch')
         axes[i].set_ylabel('Accuracy')
@@ -35,7 +39,10 @@ def plot_per_task_accuracy(logger):
 
 def plot_loss(logger):
     plt.plot(logger.logged_metrics["train_loss_epoch"], label="loss")
-    plt.plot(logger.logged_metrics["val_loss"], label="val loss")
+    try:
+        plt.plot(logger.logged_metrics["val_loss"], label="val loss")
+    except KeyError:
+        warnings.warn('No validation loss found.')
     plt.legend()
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
@@ -43,13 +50,23 @@ def plot_loss(logger):
 
 def get_best_epoch(logger):
     # Find the best epoch based on validation loss
-    best_epoch = np.argmin(logger.logged_metrics['val_loss'])
-    best_loss = logger.logged_metrics['val_loss'][best_epoch]
-    best_acc_bowel = logger.logged_metrics[f'val_bowel_accuracy'][best_epoch]
-    best_acc_extra = logger.logged_metrics[f'val_extra_accuracy'][best_epoch]
-    best_acc_liver = logger.logged_metrics[f'val_liver_accuracy'][best_epoch]
-    best_acc_kidney = logger.logged_metrics[f'val_kidney_accuracy'][best_epoch]
-    best_acc_spleen = logger.logged_metrics[f'val_spleen_accuracy'][best_epoch]
+    try:
+        best_epoch = np.argmin(logger.logged_metrics['val_loss'])
+        best_loss = logger.logged_metrics['val_loss'][best_epoch]
+        best_acc_bowel = logger.logged_metrics[f'val_bowel_accuracy'][best_epoch]
+        best_acc_extra = logger.logged_metrics[f'val_extra_accuracy'][best_epoch]
+        best_acc_liver = logger.logged_metrics[f'val_liver_accuracy'][best_epoch]
+        best_acc_kidney = logger.logged_metrics[f'val_kidney_accuracy'][best_epoch]
+        best_acc_spleen = logger.logged_metrics[f'val_spleen_accuracy'][best_epoch]
+    except KeyError:
+        warnings.warn('No validation loss found. Using training loss instead')
+        best_epoch = np.argmin(logger.logged_metrics['train_loss_epoch'])
+        best_loss = logger.logged_metrics['train_loss_epoch'][best_epoch]
+        best_acc_bowel = logger.logged_metrics[f'train_bowel_accuracy'][best_epoch]
+        best_acc_extra = logger.logged_metrics[f'train_extra_accuracy'][best_epoch]
+        best_acc_liver = logger.logged_metrics[f'train_liver_accuracy'][best_epoch]
+        best_acc_kidney = logger.logged_metrics[f'train_kidney_accuracy'][best_epoch]
+        best_acc_spleen = logger.logged_metrics[f'train_spleen_accuracy'][best_epoch]
 
     # Calculate mean accuracy
     best_acc = np.mean([best_acc_bowel, best_acc_extra, best_acc_liver, best_acc_kidney, best_acc_spleen])
