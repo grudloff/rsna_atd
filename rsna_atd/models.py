@@ -194,7 +194,7 @@ class CT_25DModel(CT_BaseModel):
             raise KeyError(f"Backbone {backbone} not found. Please choose one of: {list(config.backbone_dict.keys())}")
 
         with torch.no_grad():
-            output_size = self.backbone(torch.zeros(1, 3, *config.IMAGE_SIZE)).shape[1]
+            backbone_output_size = self.backbone(torch.zeros(1, 3, *config.IMAGE_SIZE)).shape[1]
 
         # self.view_aggregators= nn.ModuleList([
         #     nn.LSTM(input_size=output_size, hidden_size=config.LSTM_HIDDEN_SIZE, num_layers=2, batch_first=False),
@@ -205,24 +205,26 @@ class CT_25DModel(CT_BaseModel):
         # self.series_aggregator = nn.RNN(input_size=config.LSTM_HIDDEN_SIZE*2, hidden_size=config.RNN_HIDDEN_SIZE,
         #                                 num_layers=2, batch_first=False)
 
-        self.series_aggregator = nn.RNN(input_size=output_size, hidden_size=config.RNN_HIDDEN_SIZE,
-                                        num_layers=2, batch_first=False)
+        self.series_aggregator = nn.RNN(input_size=backbone_output_size+1, hidden_size=config.RNN_HIDDEN_SIZE,
+                                        num_layers=2, batch_first=False, bidirectional=True)
+        
+        aggregator_output_size = config.RNN_HIDDEN_SIZE*2
 
         self.heads = nn.ModuleList([
             # Bowel
-            nn.Sequential(nn.Linear(output_size, config.HEAD_HIDDEN_SIZE), nn.SiLU(),
+            nn.Sequential(nn.Linear(aggregator_output_size, config.HEAD_HIDDEN_SIZE), nn.SiLU(),
                           nn.Linear(config.HEAD_HIDDEN_SIZE, 2), nn.Softmax(dim=-1)),
             # Extra
-            nn.Sequential(nn.Linear(output_size, config.HEAD_HIDDEN_SIZE), nn.SiLU(),
+            nn.Sequential(nn.Linear(aggregator_output_size, config.HEAD_HIDDEN_SIZE), nn.SiLU(),
                           nn.Linear(config.HEAD_HIDDEN_SIZE, 2), nn.Softmax(dim=-1)),
             # Liver
-            nn.Sequential(nn.Linear(output_size, config.HEAD_HIDDEN_SIZE), nn.SiLU(),
+            nn.Sequential(nn.Linear(aggregator_output_size, config.HEAD_HIDDEN_SIZE), nn.SiLU(),
                           nn.Linear(config.HEAD_HIDDEN_SIZE, 3), nn.Softmax(dim=-1)),
             # Kidney
-            nn.Sequential(nn.Linear(output_size, config.HEAD_HIDDEN_SIZE), nn.SiLU(),
+            nn.Sequential(nn.Linear(aggregator_output_size, config.HEAD_HIDDEN_SIZE), nn.SiLU(),
                           nn.Linear(config.HEAD_HIDDEN_SIZE, 3), nn.Softmax(dim=-1)),
             # Spleen
-            nn.Sequential(nn.Linear(output_size, config.HEAD_HIDDEN_SIZE), nn.SiLU(),
+            nn.Sequential(nn.Linear(aggregator_output_size, config.HEAD_HIDDEN_SIZE), nn.SiLU(),
                           nn.Linear(config.HEAD_HIDDEN_SIZE, 3), nn.Softmax(dim=-1))
         ])
 
@@ -249,6 +251,7 @@ class CT_25DModel(CT_BaseModel):
                 # volume.shape: (b, H, W, D)
                 bottom_view = volume.permute(3, 0, 1, 2)
                 # bottom_view.shape: (H, b, W, D)
+                bottom_view = bottom_view[::4]
                 bottom_features = self.backbone(bottom_view)
                 # aggregate with adaptive max pooling
                 bottom_rep = torch.max(bottom_features, dim=0)[0]
@@ -256,6 +259,7 @@ class CT_25DModel(CT_BaseModel):
                 # bottom_rep = self.view_aggregators[0](bottom_features)[0][-1, :]
                 front_view = volume.permute(1, 0, 2, 3)
                 # front_view.shape: (D, b, H, W)
+                front_view = front_view[::4]
                 front_features= self.backbone(front_view)
                 # aggregate with adaptive max pooling
                 front_rep = torch.max(front_features, dim=0)[0]
@@ -263,6 +267,7 @@ class CT_25DModel(CT_BaseModel):
                 # front_rep = self.view_aggregators[1](front_features)[0][-1, :]
                 side_view = volume.permute(2, 0, 1, 3)
                 # side_view.shape: (H, b, W, D)
+                side_view = side_view[::4]
                 side_features = self.backbone(side_view)
                 # aggregate with adaptive max pooling
                 side_rep = torch.max(side_features, dim=0)[0]
