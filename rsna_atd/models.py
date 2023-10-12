@@ -248,7 +248,7 @@ class CT_25DModel(CT_BaseModel):
                 bottom_view = volume.permute(3, 0, 1, 2)
                 # bottom_view.shape: (H, b, W, D)
                 if self.training:
-                    bottom_view = bottom_view[::4]
+                    bottom_view = bottom_view[::config.VIEW_INTERLEAVING]
                 bottom_features = self.backbone_list[0](bottom_view)
                 # aggregate with adaptive max pooling
                 bottom_rep = torch.max(bottom_features, dim=0)[0]
@@ -257,7 +257,7 @@ class CT_25DModel(CT_BaseModel):
                 front_view = volume.permute(1, 0, 2, 3)
                 # front_view.shape: (D, b, H, W)
                 if self.training:
-                    front_view = front_view[::4]
+                    front_view = front_view[::config.VIEW_INTERLEAVING]
                 front_features= self.backbone_list[1](front_view)
                 # aggregate with adaptive max pooling
                 front_rep = torch.max(front_features, dim=0)[0]
@@ -266,7 +266,7 @@ class CT_25DModel(CT_BaseModel):
                 side_view = volume.permute(2, 0, 1, 3)
                 # side_view.shape: (H, b, W, D)
                 if self.training:
-                    side_view = side_view[::4]
+                    side_view = side_view[::config.VIEW_INTERLEAVING]
                 side_features = self.backbone_list[2](side_view)
                 # aggregate with adaptive max pooling
                 side_rep = torch.max(side_features, dim=0)[0]
