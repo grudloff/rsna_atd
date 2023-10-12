@@ -28,7 +28,7 @@ pip install .
 
 Each patient can have one or multiple abdominal CT scans. The prediction is made per patient, indicating the corresponding trauma (or lack of).
 
-![sample_image.png](assets\sample_image.png)
+![sample_image.png](assets/sample_image.png)
 
 # Data
 
