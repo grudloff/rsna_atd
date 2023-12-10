@@ -125,6 +125,28 @@ def max_shape_pad(tensor_list):
             padded_tensors.append(padded_tensor)
     return padded_tensors
 
+class PreprocessingDataset(Dataset):
+    def __init__(self, image_files, aortic_hues, labels, transform):
+        self.image_files = image_files
+        self.aortic_hues = aortic_hues
+        self.labels = labels
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.image_files)
+
+    def __getitem__(self, index):
+        img_paths = self.image_files[index]
+        img_list = [self.transform(path) for path in img_paths]
+        aortic_hu = self.aortic_hues[index]
+        label = self.labels[index]
+        if len(img_list) > 1:
+            padded_img_list = max_shape_pad(img_list)
+            img = torch.cat(padded_img_list, 0)
+            return img, aortic_hu, label
+        else:
+            return img_list[0], aortic_hu, label
+
 class LoadingDataset(Dataset):
     def __init__(self, data_paths, ah_normalizer, transform=None, augment=None, train=False):
         self.data_paths = data_paths
