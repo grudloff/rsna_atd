@@ -106,37 +106,37 @@ rsna_atd
 
 1. CT_2DModel
    
-The model is composed of a backbone and 5 heads, one for each task.
-The backbone is a pretrained ResNet or EfficientNet model. The heads are composed of a linear layer,
-a SiLU activation function, a linear layer with 2, 2, 3, 3, 3 neurons respectively and
-a softmax activation function. The output of the model is a list of 6 tensors, one for each head. The last
-head, which corresponds to no injury, is computed from the injury probabilities of the other heads.
-The loss function is a weighted cross entropy loss.
+   The model is composed of a backbone and 5 heads, one for each task.
+   The backbone is a pretrained ResNet or EfficientNet model. The heads are composed of a linear layer,
+   a SiLU activation function, a linear layer with 2, 2, 3, 3, 3 neurons respectively and
+   a softmax activation function. The output of the model is a list of 6 tensors, one for each head. The last
+   head, which corresponds to no injury, is computed from the injury probabilities of the other heads.
+   The loss function is a weighted cross entropy loss.
     
 2. CT_25DModel
 
-The 2.5D model for CT scans. The idea of the model is that the backbone extracts a representation for each slice,
-from front and side views. Separate aggregators combine the information from each view into a single representation.
-These representations are then stacked and used by the heads to predict the probabilities for each class.
-
-The model is composed of a backbone, three view-level aggregators, one series_level aggregator and 5 heads, one for each task.
-The backbone is a pretrained ResNet or EfficientNet model. The view-level aggregators are composed of a LSTSM with 2 layers,
-with 128 hidden units and a SiLU activation function. The series-level aggregator is composed of a RNN with 2 layers,
-with 32 hidden units and a SiLU activastion function. The heads are composed of a linear layer,
-a SiLU activation function, a linear layer with 2, 2, 3, 3, 3 neurons respectively and
-a softmax activation function. The output of the model is a list of 6 tensors, one for each head. The last
-head, which corresponds to no injury, is computed from the injury probabilities of the other heads.
-The loss function is a weighted cross entropy loss.
+   The 2.5D model for CT scans. The idea of the model is that the backbone extracts a representation for each slice,
+   from front and side views. Separate aggregators combine the information from each view into a single representation.
+   These representations are then stacked and used by the heads to predict the probabilities for each class.
+   
+   The model is composed of a backbone, three view-level aggregators, one series_level aggregator and 5 heads, one for each task.
+   The backbone is a pretrained ResNet or EfficientNet model. The view-level aggregators are composed of a LSTSM with 2 layers,
+   with 128 hidden units and a SiLU activation function. The series-level aggregator is composed of a RNN with 2 layers,
+   with 32 hidden units and a SiLU activastion function. The heads are composed of a linear layer,
+   a SiLU activation function, a linear layer with 2, 2, 3, 3, 3 neurons respectively and
+   a softmax activation function. The output of the model is a list of 6 tensors, one for each head. The last
+   head, which corresponds to no injury, is computed from the injury probabilities of the other heads.
+   The loss function is a weighted cross entropy loss.
 
 3. CT_3DModel
 
-3D model for CT scans. The idea of the model is that the backbone extracts a representation for each session,
-and then the aggregator combines the representations into a single representation. This representation is then
-used by the heads to predict the probabilities for each class.
-
-The model is composed of a backbone and 5 heads, one for each task.
-The backbone is a DenseNet model. The heads are composed of a linear layer,
-a SiLU activation function, a linear layer with 2, 2, 3, 3, 3 neurons respectively and
-a softmax activation function. The output of the model is a list of 6 tensors, one for each head. The last
-head, which corresponds to no injury, is computed from the injury probabilities of the other heads.
-The loss function is a weighted cross entropy loss.
+   3D model for CT scans. The idea of the model is that the backbone extracts a representation for each session,
+   and then the aggregator combines the representations into a single representation. This representation is then
+   used by the heads to predict the probabilities for each class.
+   
+   The model is composed of a backbone and 5 heads, one for each task.
+   The backbone is a DenseNet model. The heads are composed of a linear layer,
+   a SiLU activation function, a linear layer with 2, 2, 3, 3, 3 neurons respectively and
+   a softmax activation function. The output of the model is a list of 6 tensors, one for each head. The last
+   head, which corresponds to no injury, is computed from the injury probabilities of the other heads.
+   The loss function is a weighted cross entropy loss.
